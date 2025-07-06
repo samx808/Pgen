@@ -21,8 +21,8 @@ use clap::{Parser, ValueEnum};
 use eff_lexical_data::{WL_AUTOCOMPLETE, WL_LONG, WL_SHORT};
 use rand::thread_rng;
 use rand::Rng;
+use std::io;
 use std::io::{stdin, stdout, Write};
-use thiserror::Error;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -33,6 +33,9 @@ struct Cli {
     /// Select wordlist to use
     #[arg(short = 'w', long = "wordlist", value_enum, default_value_t)]
     use_wlist: WordlistChoice,
+    // Chose custom separator for each word in passphrase
+    #[arg(short = 's', long = "separator", default_value_t = ' ')]
+    custom_separator: char,
     /// Specify the number of passphrases to generate k
     #[arg(short, default_value_t = 1, value_name = "k")]
     k: u32,
@@ -95,13 +98,7 @@ impl Default for WordlistChoice {
     }
 }
 
-#[derive(Debug, Error)]
-enum Error {
-    #[error("Invalid number of words for BIP39: {0}")]
-    Bip39MSLenInvalid(usize),
-}
-
-fn main() -> anyhow::Result<()> {
+fn main() -> io::Result<()> {
     let cli = Cli::parse();
 
     let wordlist = match cli.use_wlist {
@@ -129,19 +126,10 @@ fn main() -> anyhow::Result<()> {
 
     let num_passphrases = cli.k;
 
+    let separator = cli.custom_separator.to_string();
+
     let num_words = match cli.n {
-        Some(n) => {
-            // BIP39 has specific allowable lengths of the generated mnemonic sentence (MS) in words.
-            // See <https://en.bitcoin.it/wiki/BIP_0039#Generating_the_mnemonic> for details.
-            let bip39_allowable_mnemonic_sentence_lengths: [usize; 5] = [12, 15, 18, 21, 24];
-            if cli.use_wlist == WordlistChoice::Bip39
-                && !bip39_allowable_mnemonic_sentence_lengths.contains(&n)
-            {
-                eprintln!("When BIP39 wordlist is used, number of words to use must be one of: {bip39_allowable_mnemonic_sentence_lengths:?}");
-                return Err(Error::Bip39MSLenInvalid(n).into());
-            }
-            n
-        }
+        Some(n) => n,
         None => {
             if cli.use_wlist == WordlistChoice::EffLong {
                 10
@@ -180,7 +168,7 @@ fn main() -> anyhow::Result<()> {
                 for i in 0..num_words {
                     handle.write_all(wordlist[word_idx[i]].as_bytes())?;
                     if i < (num_words - 1) {
-                        handle.write_all(b" ")?;
+                        handle.write_all(separator.as_bytes())?;
                     }
                 }
             } else {
@@ -191,7 +179,7 @@ fn main() -> anyhow::Result<()> {
                         wordlist[rng.gen_range(0..wordlist.len()) as usize].as_bytes(),
                     )?;
                     if i < (num_words - 1) {
-                        handle.write_all(b" ")?;
+                        handle.write_all(separator.as_bytes())?;
                     }
                 }
             }
